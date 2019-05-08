@@ -1,9 +1,10 @@
 const budgetController = (() => {
 
-    const Expense = function(id, description, value) {
+    const Expense = function(id, description, value, type) {
         this.id = id;
         this.description = description;
         this.value = value;
+        this.type = type;
     };
 
     Expense.prototype.calcPercentage = function(totalIncome) {
@@ -18,10 +19,11 @@ const budgetController = (() => {
         return this.percentage;
     }
 
-    const Income = function(id, description, value) {
+    const Income = function(id, description, value, type) {
         this.id = id;
         this.description = description;
         this.value = value;
+        this.type = type;
     };
 
     const calculateTotal = (type) => {
@@ -46,13 +48,17 @@ const budgetController = (() => {
     }
 
         return {
-            addItem : (type, des, val) => {
+            addItem : (type, des, val, lastKeyStorage) => {
                 let newItem, ID;
-                ID = data.allItems[type].length > 0 ? data.allItems[type][data.allItems[type].length - 1].id + 1 : 0;
+                if (lastKeyStorage !== null) {
+                    ID = lastKeyStorage + 1;
+                } else {
+                    ID = data.allItems[type].length > 0 ? data.allItems[type][data.allItems[type].length - 1].id + 1 : 0;
+                }
                 if (type === 'exp') {
-                    newItem = new Expense(ID, des, val);
+                    newItem = new Expense(ID, des, val, type);
                 } else if (type === 'inc') {
-                    newItem = new Income(ID, des, val);
+                    newItem = new Income(ID, des, val, type);
                 }
                 data.allItems[type].push(newItem);
 
@@ -100,6 +106,10 @@ const budgetController = (() => {
                     totalExp: data.totals.exp,
                     percentage: data.percentage
                 }
+            },
+
+            getData: () => {
+                return data;
             }
 
         }
@@ -233,7 +243,6 @@ const UIController = (() => {
         },
 
         changedType: function() {
-            
             const fields = document.querySelectorAll(
                 DOMstrings.inputType + ',' +
                 DOMstrings.inputDescription + ',' +
@@ -242,9 +251,7 @@ const UIController = (() => {
             nodeListForEach(fields, (cur) => {
                cur.classList.toggle('red-focus'); 
             });
-            
             document.querySelector(DOMstrings.inputBtn).classList.toggle('red');
-            
         },
 
         getDOMstrings: () => {
@@ -253,8 +260,44 @@ const UIController = (() => {
     }
 })();
 
+const storageController = (() => {
+    const STORAGE_KEY = 'item';
+    return {
+        forEachStorageValue : (callback) => {
+            for (let i = 0; i < localStorage.length; i++) {
+                callback(JSON.parse(localStorage.getItem(localStorage.key(i))));
+            }
+        },
+        saveItem: (obj) => {
+            localStorage.setItem(STORAGE_KEY+obj.id, JSON.stringify(obj));
+        },
+        deleteItem: (ID) => {
+            console.log(localStorage);
+            if (ID !== undefined) {
+                localStorage.removeItem(STORAGE_KEY+ID);
+            } 
+        },
+        getLastKey: () => {
+            const item = JSON.parse(localStorage.getItem(Object.keys(localStorage)[Object.keys(localStorage).length - 1]));
+            if (item !== null) {
+                return item.id;
+            }
+            return null;
+        },
 
-const controller = ((budgetCtrl, UICtrl) => {
+        isEmpty: function() {
+            return this.getLastKey() === null;
+        },
+
+        listStorageTesting: () => {
+           // console.log(localStorage);
+        }
+    }
+
+})();
+
+
+const controller = ((budgetCtrl, UICtrl, storageCtrl) => {
 
     const setupEventListeners = () => {
         const DOM = UICtrl.getDOMstrings();
@@ -273,6 +316,7 @@ const controller = ((budgetCtrl, UICtrl) => {
         //5 Display the budget on the UI
         const budget = budgetCtrl.getBudget();
         UICtrl.displayBudget(budget);
+        storageCtrl.listStorageTesting();
     };
     
     const updatePercentage = () => {
@@ -287,7 +331,9 @@ const controller = ((budgetCtrl, UICtrl) => {
         input = UICtrl.getInput();
         if (input.description !== '' && !isNaN(input.value) && input.value > 0) {
         //2 Add the item to the budgetController
-        newItem = budgetCtrl.addItem(input.type, input.description, input.value);
+        const lastKeyStorage = storageCtrl.getLastKey();
+        newItem = budgetCtrl.addItem(input.type, input.description, input.value, lastKeyStorage);
+        storageCtrl.saveItem(newItem);
         //3 add the item to the UI
         UICtrl.addListItem(newItem, input.type);
         UICtrl.clearFields();
@@ -307,6 +353,7 @@ const controller = ((budgetCtrl, UICtrl) => {
         }
         budgetCtrl.deleteItem(type,id);
         UICtrl.deleteItem(itemID);
+        storageCtrl.deleteItem(id);
         updateBudget();
         updatePercentage();
      }
@@ -315,15 +362,25 @@ const controller = ((budgetCtrl, UICtrl) => {
          init: () => {
              console.log('Application has been started');
              UICtrl.displayMonth();
-             UICtrl.displayBudget({
-                budget: 0,
-                totalInc: 0,
-                totalExp: 0,
-                percentage: -1
-            });
              setupEventListeners();
+             if (!(storageCtrl.isEmpty())) {
+                storageCtrl.forEachStorageValue((obj) => {
+                    budgetCtrl.addItem(obj.type, obj.description, obj.value, null);
+                    UICtrl.addListItem(obj, obj.type);
+                    updateBudget();
+                    updatePercentage();
+                });
+
+             } else {
+                UICtrl.displayBudget({
+                    budget: 0,
+                    totalInc: 0,
+                    totalExp: 0,
+                    percentage: -1
+                });
+             }
          }
      }
-})(budgetController, UIController);
+})(budgetController, UIController, storageController);
 
 controller.init();
